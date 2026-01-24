@@ -1,1 +1,0 @@
-# CNN-detectora-de-mascara
