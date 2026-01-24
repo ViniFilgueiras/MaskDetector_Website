@@ -1,0 +1,20 @@
+# ESP-IDF
+build/
+sdkconfig
+sdkconfig.old
+
+# Python
+__pycache__/
+*.pyc
+
+# VSCode
+.vscode/
+
+# Binários e temporários
+*.bin
+*.elf
+*.map
+
+# Sistema
+.DS_Store
+Thumbs.db
