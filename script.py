@@ -1,7 +1,7 @@
 """
 Servidor intermediário:
 HTML -> Python -> ESP32-S3
-Modelo: 96x96 RGB (INT8)
+Modelo: 96x96 RGB (UINT8)
 """
 
 import serial
@@ -111,7 +111,6 @@ def classify():
         print("Enviando imagem para ESP...")
         raw_result = send_image_to_esp(image_np)
         print("Resposta da ESP:", raw_result)
-        # Esperado: "M:180 S:60"
 
         m_match = re.search(r'M:(\d+)', raw_result)
         s_match = re.search(r'S:(\d+)', raw_result)
