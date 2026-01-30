@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "driver/usb_serial_jtag.h"
 #include "NeuralNetwork.h"
+#include "esp_heap_caps.h"
 
 static const char *TAG = "MASK_DETECTOR";
 
@@ -41,10 +42,14 @@ extern "C" void app_main(void) {
     
     // Buffer para o cabeçalho
     int8_t header[5]; 
-    const int IMAGE_SIZE = 64 * 64 * 3;
+    const int IMAGE_SIZE = 96 * 96 * 3;
 
     // Buffer temporário para receber dados crus do USB (0-255)
-    uint8_t* temp_usb_buffer = (uint8_t*)malloc(IMAGE_SIZE);
+    uint8_t* temp_usb_buffer = (uint8_t*) heap_caps_malloc(
+    IMAGE_SIZE,
+    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
+    );
+
 
     if (temp_usb_buffer == NULL) {
         ESP_LOGE(TAG, "Falha ao alocar buffer temporário!");

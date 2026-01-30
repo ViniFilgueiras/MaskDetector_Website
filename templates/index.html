@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Detecção de Máscaras - ESP32 CNN</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #00ff88;
+            --primary-dark: #00cc6a;
+            --secondary: #0066ff;
+            --bg-dark: #0a0e1a;
+            --bg-card: #141b2e;
+            --bg-input: #1a2332;
+            --text: #e8edf4;
+            --text-dim: #8b95a8;
+            --border: #2a3548;
+            --success: #00ff88;
+            --error: #ff4466;
+            --warning: #ffaa00;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated background grid */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(var(--border) 1px, transparent 1px),
+                linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 40px 40px;
+            opacity: 0.15;
+            animation: gridMove 20s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(40px, 40px); }
+        }
+
+        /* Glowing orbs */
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.2;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .orb-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--primary);
+            top: -100px;
+            right: -100px;
+            animation: float 15s ease-in-out infinite;
+        }
+
+        .orb-2 {
+            width: 300px;
+            height: 300px;
+            background: var(--secondary);
+            bottom: -50px;
+            left: -50px;
+            animation: float 12s ease-in-out infinite reverse;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(30px, -30px) scale(1.1); }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+            animation: slideDown 0.6s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -1px;
+        }
+
+        .subtitle {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 968px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+            animation: fadeInUp 0.6s ease-out;
+            animation-fill-mode: both;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card:nth-child(1) { animation-delay: 0.1s; }
+        .card:nth-child(2) { animation-delay: 0.2s; }
+
+        .card-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-icon {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--primary);
+            border-radius: 6px;
+            font-weight: 700;
+            color: var(--bg-dark);
+        }
+
+        /* Upload area */
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: var(--bg-input);
+            position: relative;
+        }
+
+        .upload-area:hover,
+        .upload-area.drag-over {
+            border-color: var(--primary);
+            background: rgba(0, 255, 136, 0.05);
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: var(--primary);
+        }
+
+        .upload-text {
+            color: var(--text-dim);
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* Preview area */
+        .preview-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .preview-container.active {
+            display: block;
+        }
+
+        .image-preview {
+            width: 100%;
+            max-height: 400px;
+            object-fit: contain;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin-bottom: 15px;
+        }
+
+        .preview-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Buttons */
+        button {
+            font-family: 'Outfit', sans-serif;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        button:active::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: var(--bg-dark);
+            flex: 1;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 255, 136, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--bg-input);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--bg-dark);
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Result display */
+        .result-container {
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .result-empty {
+            text-align: center;
+            color: var(--text-dim);
+        }
+
+        .result-icon {
+            font-size: 4rem;
+            opacity: 0.3;
+        }
+
+        .result-display {
+            display: none;
+            text-align: center;
+            width: 100%;
+        }
+
+        .result-display.active {
+            display: block;
+            animation: scaleIn 0.5s ease-out;
+        }
+
+        @keyframes scaleIn {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .result-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 20px 40px;
+            border-radius: 12px;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .result-badge.with-mask {
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--success);
+            border: 2px solid var(--success);
+        }
+
+        .result-badge.without-mask {
+            background: rgba(255, 68, 102, 0.1);
+            color: var(--error);
+            border: 2px solid var(--error);
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .result-icon-large {
+            font-size: 3rem;
+        }
+
+        .result-details {
+            background: var(--bg-input);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            color: var(--text-dim);
+        }
+
+        .detail-value {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        /* ESP Status */
+        .esp-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            background: var(--bg-input);
+            border-radius: 8px;
+            margin-top: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            animation: blink 2s ease-in-out infinite;
+        }
+
+        .status-dot.connected {
+            background: var(--success);
+        }
+
+        .status-dot.disconnected {
+            background: var(--error);
+        }
+
+        .status-dot.processing {
+            background: var(--warning);
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Info section */
+        .info-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 30px;
+            margin-top: 30px;
+            animation: fadeInUp 0.6s ease-out 0.3s;
+            animation-fill-mode: both;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .info-item {
+            padding: 20px;
+            background: var(--bg-input);
+            border-radius: 8px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .info-item h3 {
+            font-size: 1rem;
+            margin-bottom: 8px;
+            color: var(--primary);
+        }
+
+        .info-item p {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        /* Processing Section */
+        .processing-container {
+            margin-top: 20px;
+        }
+
+        .warning-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            background: rgba(255, 170, 0, 0.1);
+            border: 2px solid var(--warning);
+            border-radius: 8px;
+            color: var(--warning);
+            font-weight: 600;
+            margin-bottom: 30px;
+            animation: warningPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes warningPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        .warning-icon {
+            font-size: 1.5rem;
+        }
+
+        .image-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 968px) {
+            .image-comparison {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .comparison-item {
+            text-align: center;
+        }
+
+        .comparison-item h3 {
+            font-size: 1rem;
+            margin-bottom: 15px;
+            color: var(--text-dim);
+            font-weight: 500;
+        }
+
+        .crop-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto 20px;
+            overflow: hidden;
+            border-radius: 12px;
+            border: 2px solid var(--border);
+        }
+
+        .comparison-image-full {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .crop-box {
+            position: absolute;
+            border: 3px solid var(--primary);
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            transition: all 0.1s ease-out;
+        }
+
+        .crop-box::before,
+        .crop-box::after {
+            content: '';
+            position: absolute;
+            background: var(--primary);
+        }
+
+        .crop-box::before {
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            transform: translateY(-50%);
+        }
+
+        .crop-box::after {
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            transform: translateX(-50%);
+        }
+
+        .crop-controls {
+            background: var(--bg-input);
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group:last-of-type {
+            margin-bottom: 20px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--border);
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none; 
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 10px var(--primary);
+        }
+
+        .slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .slider::-moz-range-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 10px var(--primary);
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            width: 100%;
+        }
+
+        .comparison-image {
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            border-radius: 12px;
+            border: 2px solid var(--border);
+            transition: all 0.3s;
+        }
+
+        .comparison-image:hover {
+            border-color: var(--primary);
+            transform: scale(1.02);
+        }
+
+        .image-info {
+            margin-top: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        .processing-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .btn-large {
+            font-size: 1.1rem;
+            padding: 16px 40px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Decorative orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+
+    <div class="container">
+        <header>
+            <h1>Sistema de Detecção de Máscaras</h1>
+            <p class="subtitle">ESP32 + CNN | Visão Computacional</p>
+        </header>
+
+        <div class="main-grid">
+            <!-- Upload Card -->
+            <div class="card">
+                <h2 class="card-title">
+                    <span class="card-icon">📸</span>
+                    Capturar Imagem
+                </h2>
+
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📷</div>
+                    <div class="upload-text">Clique ou arraste uma imagem</div>
+                    <div class="upload-hint">PNG, JPG ou JPEG</div>
+                    <input type="file" id="fileInput" accept="image/png, image/jpeg, image/jpg">
+                </div>
+
+                <div class="preview-container" id="previewContainer">
+                    <img id="imagePreview" class="image-preview" alt="Preview">
+                </div>
+
+                <div class="esp-status">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">ESP32: Aguardando conexão</span>
+                </div>
+            </div>
+
+            <!-- Result Card -->
+            <div class="card">
+                <h2 class="card-title">
+                    <span class="card-icon">🤖</span>
+                    Resultado da Análise
+                </h2>
+
+                <div class="result-container">
+                    <div class="result-empty" id="resultEmpty">
+                        <div class="result-icon">🔍</div>
+                        <p>Aguardando análise...</p>
+                    </div>
+
+                    <div class="result-display" id="resultDisplay">
+                        <div class="result-badge" id="resultBadge">
+                            <span class="result-icon-large" id="resultIcon"></span>
+                            <span id="resultText"></span>
+                        </div>
+
+                        <div class="result-details">
+                            <div class="detail-row">
+                                <span class="detail-label">Status:</span>
+                                <span class="detail-value" id="detailStatus">-</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Timestamp:</span>
+                                <span class="detail-value" id="detailTime">-</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Tempo de processamento:</span>
+                                <span class="detail-value" id="detailProcessing">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Processing Section -->
+        <div class="info-section" id="processingSection" style="display: none;">
+            <h2 class="card-title">
+                <span class="card-icon">🖼️</span>
+                Ajustar Posição da Imagem
+            </h2>
+
+            <div class="processing-container">
+                <div class="warning-box">
+                    <span class="warning-icon">⚠️</span>
+                    <span>Ajuste a posição para centralizar o rosto na imagem</span>
+                </div>
+
+                <div class="image-comparison">
+                    <div class="comparison-item">
+                        <h3>Imagem Original</h3>
+                        <div class="crop-container">
+                            <img id="originalImage" class="comparison-image-full" alt="Original">
+                            <div class="crop-box" id="cropBox"></div>
+                        </div>
+                        <div class="crop-controls">
+                            <div class="control-group">
+                                <label>Posição Horizontal:</label>
+                                <input type="range" id="cropX" min="0" max="100" value="50" class="slider">
+                            </div>
+                            <div class="control-group">
+                                <label>Posição Vertical:</label>
+                                <input type="range" id="cropY" min="0" max="100" value="50" class="slider">
+                            </div>
+                            <div class="control-group">
+                                <label>Zoom:</label>
+                                <input type="range" id="cropZoom" min="100" max="200" value="100" class="slider">
+                            </div>
+                            <button class="btn-secondary btn-small" id="resetCropButton">↺ Resetar</button>
+                        </div>
+                    </div>
+                    <div class="comparison-item">
+                        <h3>Resultado Final (Quadrada)</h3>
+                        <img id="processedImage" class="comparison-image" alt="Processada">
+                        <div class="image-info">
+                            <span id="imageSize">224 x 224 pixels</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="processing-actions">
+                    <button class="btn-primary btn-large" id="sendProcessedButton">
+                        <span id="sendProcessedButtonText">📡 Enviar para ESP32</span>
+                    </button>
+                    <button class="btn-secondary" id="cancelButton">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================
+        // 🔧 CONFIGURAÇÃO DE INTEGRAÇÃO ESP32
+        // ========================================
+        // ATENÇÃO: Configure estas variáveis antes de usar em produção!
+        // Este é o endereço IP ou hostname da sua ESP32
+        const ESP32_URL = 'http://192.168.1.100'; // ⚠️ ALTERE para o IP da sua ESP32
+        const ESP32_ENDPOINT = '/detect'; // ⚠️ ALTERE se necessário o endpoint
+        
+        // Tamanho da imagem quadrada para processamento
+        const IMAGE_SIZE = 96;
+        
+        // ========================================
+        // Variáveis globais
+        // ========================================
+        let selectedImage = null;
+        let processedImageBase64 = null;
+        let processingStartTime = null;
+        let originalImageElement = null;
+        
+        // Parâmetros de crop
+        let cropParams = {
+            x: 50,      // Posição horizontal (0-100%)
+            y: 50,      // Posição vertical (0-100%)
+            zoom: 100   // Zoom (100-200%)
+        };
+
+        // Elementos do DOM
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const resultEmpty = document.getElementById('resultEmpty');
+        const resultDisplay = document.getElementById('resultDisplay');
+        const resultBadge = document.getElementById('resultBadge');
+        const resultIcon = document.getElementById('resultIcon');
+        const resultText = document.getElementById('resultText');
+        const detailStatus = document.getElementById('detailStatus');
+        const detailTime = document.getElementById('detailTime');
+        const detailProcessing = document.getElementById('detailProcessing');
+        
+        // Elementos de processamento
+        const processingSection = document.getElementById('processingSection');
+        const originalImage = document.getElementById('originalImage');
+        const processedImage = document.getElementById('processedImage');
+        const cropBox = document.getElementById('cropBox');
+        const sendProcessedButton = document.getElementById('sendProcessedButton');
+        const sendProcessedButtonText = document.getElementById('sendProcessedButtonText');
+        const cancelButton = document.getElementById('cancelButton');
+        const imageSize = document.getElementById('imageSize');
+        
+        // Controles de crop
+        const cropX = document.getElementById('cropX');
+        const cropY = document.getElementById('cropY');
+        const cropZoom = document.getElementById('cropZoom');
+        const resetCropButton = document.getElementById('resetCropButton');
+
+        // ========================================
+        // Event Listeners - Upload de Imagem
+        // ========================================
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                handleImageSelect(file);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleImageSelect(file);
+            }
+        });
+
+        // Event listeners para controles de crop
+        cropX.addEventListener('input', (e) => {
+            cropParams.x = parseInt(e.target.value);
+            updateCropBox();
+            updateProcessedImage();
+        });
+
+        cropY.addEventListener('input', (e) => {
+            cropParams.y = parseInt(e.target.value);
+            updateCropBox();
+            updateProcessedImage();
+        });
+
+        cropZoom.addEventListener('input', (e) => {
+            cropParams.zoom = parseInt(e.target.value);
+            updateCropBox();
+            updateProcessedImage();
+        });
+
+        resetCropButton.addEventListener('click', resetCrop);
+        cancelButton.addEventListener('click', cancelProcessing);
+        sendProcessedButton.addEventListener('click', sendImageToESP32);
+
+        // ========================================
+        // Funções - Manipulação de Imagem
+        // ========================================
+        
+        /**
+         * Processa a imagem selecionada pelo usuário
+         * Converte para Base64 e prepara para ajuste de crop
+         */
+        function handleImageSelect(file) {
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                selectedImage = e.target.result;
+                imagePreview.src = selectedImage;
+                previewContainer.classList.add('active');
+                
+                // Reseta os parâmetros de crop
+                resetCrop();
+                
+                // Carrega a imagem na seção de processamento
+                loadImageForCropping(selectedImage);
+                
+                resetResult();
+            };
+            
+            reader.readAsDataURL(file);
+        }
+
+        /**
+         * Carrega a imagem na área de crop e inicializa os controles
+         */
+        function loadImageForCropping(imageDataUrl) {
+            originalImage.src = imageDataUrl;
+            
+            originalImage.onload = function() {
+                // Mostra a seção de processamento
+                processingSection.style.display = 'block';
+                
+                // Atualiza o tamanho exibido
+                imageSize.textContent = `${IMAGE_SIZE} x ${IMAGE_SIZE} pixels`;
+                
+                // Inicializa o crop box
+                updateCropBox();
+                
+                // Gera a primeira versão da imagem processada
+                updateProcessedImage();
+                
+                // Scroll suave até a seção de processamento
+                processingSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            };
+        }
+
+        /**
+         * Atualiza a posição e tamanho do crop box visual
+         */
+        function updateCropBox() {
+            const container = originalImage.parentElement;
+            const imgWidth = originalImage.offsetWidth;
+            const imgHeight = originalImage.offsetHeight;
+            
+            // Calcula o tamanho do crop baseado no zoom
+            const zoomFactor = 100 / cropParams.zoom;
+            const cropSize = Math.min(imgWidth, imgHeight) * zoomFactor;
+            
+            // Calcula a posição do crop
+            const maxX = imgWidth - cropSize;
+            const maxY = imgHeight - cropSize;
+            const cropLeft = (maxX * cropParams.x) / 100;
+            const cropTop = (maxY * cropParams.y) / 100;
+            
+            // Aplica ao crop box
+            cropBox.style.width = cropSize + 'px';
+            cropBox.style.height = cropSize + 'px';
+            cropBox.style.left = cropLeft + 'px';
+            cropBox.style.top = cropTop + 'px';
+        }
+
+        /**
+         * Atualiza a imagem processada com base nos parâmetros de crop
+         */
+        function updateProcessedImage() {
+            const img = new Image();
+            
+            img.onload = function() {
+                // Cria um canvas para processar a imagem
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Define o tamanho do canvas como quadrado
+                canvas.width = IMAGE_SIZE;
+                canvas.height = IMAGE_SIZE;
+                
+                // Calcula as dimensões e posição do crop
+                const zoomFactor = 100 / cropParams.zoom;
+                const cropSize = Math.min(img.width, img.height) * zoomFactor;
+                
+                const maxX = img.width - cropSize;
+                const maxY = img.height - cropSize;
+                const cropLeft = (maxX * cropParams.x) / 100;
+                const cropTop = (maxY * cropParams.y) / 100;
+                
+                // Desenha a imagem cortada e redimensionada no canvas
+                ctx.drawImage(
+                    img,
+                    cropLeft, cropTop, cropSize, cropSize,  // Área de origem (crop)
+                    0, 0, IMAGE_SIZE, IMAGE_SIZE  // Área de destino (canvas quadrado)
+                );
+                
+                // Converte o canvas para Base64
+                processedImageBase64 = canvas.toDataURL('image/jpeg', 0.9);
+                
+                // Atualiza a preview
+                processedImage.src = processedImageBase64;
+            };
+            
+            img.src = selectedImage;
+        }
+
+        /**
+         * Reseta os parâmetros de crop para valores padrão
+         */
+        function resetCrop() {
+            cropParams = { x: 50, y: 50, zoom: 100 };
+            cropX.value = 50;
+            cropY.value = 50;
+            cropZoom.value = 100;
+            
+            if (selectedImage) {
+                updateCropBox();
+                updateProcessedImage();
+            }
+        }
+
+        /**
+         * Cancela o processamento e limpa a seleção
+         */
+        function cancelProcessing() {
+            selectedImage = null;
+            processedImageBase64 = null;
+            fileInput.value = '';
+            previewContainer.classList.remove('active');
+            processingSection.style.display = 'none';
+            resetResult();
+        }
+
+        /**
+         * Reseta a exibição de resultados
+         */
+        function resetResult() {
+            resultEmpty.style.display = 'flex';
+            resultDisplay.classList.remove('active');
+        }
+
+        // ========================================
+        // 🚀 FUNÇÃO DE ENVIO PARA ESP32
+        // ========================================
+        /**
+         * Envia a imagem processada para a ESP32 e recebe o resultado da CNN
+         * 
+         * ATENÇÃO DESENVOLVEDOR:
+         * Esta é a função principal de integração com a ESP32!
+         * A imagem já está processada em formato quadrado e em Base64.
+         * 
+         * Formato de envio atual:
+         * - POST para: ESP32_URL + ESP32_ENDPOINT
+         * - Body: { "image": "base64_string_sem_prefixo" }
+         * - Header: Content-Type: application/json
+         * 
+         * Formato de resposta esperado:
+         * - { "hasMask": true/false, "confidence": 0.95 }
+         * 
+         * Adapte conforme necessário para sua implementação!
+         */
+
+        async function sendImageToESP32() {
+            if (!processedImageBase64) {
+                alert("Imagem não processada!");
+                return;
+            }
+
+            try {
+                setStatus('processing', 'Enviando imagem para o servidor...');
+                processingStartTime = Date.now();
+
+                // Converte Base64 → Blob
+                const blob = await fetch(processedImageBase64).then(res => res.blob());
+
+                const formData = new FormData();
+                formData.append("image", blob, "image.jpg");
+
+                const response = await fetch("http://localhost:5000/classify", {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error("Falha ao comunicar com o backend");
+                }
+
+                const data = await response.json();
+
+                if (typeof data.mask !== "boolean") {
+                    throw new Error("Resposta inválida do backend");
+                }
+
+                displayResult(data.mask, data.confidence);
+                setStatus('connected', 'Processamento concluído');
+
+            } catch (err) {
+                console.error(err);
+                setStatus('disconnected', 'Erro de recebimento, tente novamente!');
+                alert("Erro de processamento: por favor, tente novamente!");
+            }
+        }
+
+        // ========================================
+        // Funções - Display de Resultados
+        // ========================================
+        
+        /**
+         * Exibe o resultado da detecção na interface
+         * @param {boolean} hasMask - Se a pessoa está usando máscara
+         * @param {number} confidence - Confiança da predição (opcional)
+         */
+        function displayResult(hasMask, confidence = null) {
+            const processingTime = Date.now() - processingStartTime;
+            
+            resultEmpty.style.display = 'none';
+            resultDisplay.classList.add('active');
+
+            if (hasMask) {
+                resultBadge.className = 'result-badge with-mask';
+                resultIcon.textContent = '✅';
+                resultText.textContent = 'COM MÁSCARA';
+                detailStatus.textContent = 'Usando máscara corretamente';
+            } else {
+                resultBadge.className = 'result-badge without-mask';
+                resultIcon.textContent = '⚠️';
+                resultText.textContent = 'SEM MÁSCARA';
+                detailStatus.textContent = 'Máscara não detectada';
+            }
+
+            detailTime.textContent = new Date().toLocaleString('pt-BR');
+            detailProcessing.textContent = `${processingTime}ms` + 
+                (confidence ? ` | Confiança: ${(confidence * 100).toFixed(1)}%` : '');
+            
+            // Scroll suave até o resultado
+            resultDisplay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        /**
+         * Atualiza o status visual da conexão com a ESP32
+         * @param {string} type - Tipo de status: 'connected', 'disconnected', 'processing'
+         * @param {string} message - Mensagem a ser exibida
+         */
+        function setStatus(type, message) {
+            statusDot.className = `status-dot ${type}`;
+            statusText.textContent = `ESP32: ${message}`;
+        }
+
+        // ========================================
+        // Inicialização
+        // ========================================
+        window.addEventListener('load', () => {
+            setStatus('disconnected', 'Aguardando conexão');
+            console.log('🚀 Sistema de Detecção de Máscaras inicializado');
+            console.log('⚙️ Configuração atual:');
+            console.log('  - ESP32 URL:', ESP32_URL);
+            console.log('  - Endpoint:', ESP32_ENDPOINT);
+            console.log('  - Tamanho da imagem:', IMAGE_SIZE, 'x', IMAGE_SIZE);
+            console.log('');
+            console.log('⚠️ IMPORTANTE: Lembre-se de configurar o ESP32_URL e implementar a integração real!');
+            console.log('📖 Veja os comentários no código JavaScript para instruções detalhadas.');
+        });
+    </script>
+</body>
+</html>
