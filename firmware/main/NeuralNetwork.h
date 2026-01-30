@@ -15,7 +15,7 @@ public:
     NeuralNetwork();
     ~NeuralNetwork();
 
-    // Buffer de entrada normalizado (-128 a 127)
+    // Buffer de entrada normalizado
     int8_t* getInputBuffer();
 
     Prediction predict();
